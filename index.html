@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>KelpAR – Zappar WebAR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KelpAR — Zappar WebAR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
 
   <style>
     html, body {
@@ -13,184 +13,105 @@
       width: 100%;
       height: 100%;
       background: #000;
-      font-family: system-ui, sans-serif;
     }
-
-    #status {
+    #zappar-container {
+      width: 100%;
+      height: 100%;
       position: fixed;
+      top: 0;
+      left: 0;
+    }
+    #status {
+      position: absolute;
       top: 10px;
       left: 10px;
-      padding: 8px 12px;
-      background: rgba(0, 0, 0, 0.5);
       color: white;
-      font-size: 14px;
-      border-radius: 4px;
-      z-index: 9999;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.4);
+      z-index: 10;
+      font-family: sans-serif;
+      font-size: 16px;
     }
   </style>
 
-  <!-- Three.js r128 (matches GLTFLoader version) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Zappar JS libraries (REQUIRED) -->
+  <script src="https://libs.zappar.com/zappar/2.2.0/zappar.js"></script>
+  <script src="https://libs.zappar.com/zappar-threejs/2.2.0/zappar-threejs.js"></script>
 
-  <!-- GLTFLoader (r128) -->
-  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-
-  <!-- Zappar for ThreeJS -->
-  <script src="https://cdn.zappar.io/v1/zappar-threejs.min.js"></script>
+  <!-- THREE.js (must load BEFORE using ZapparThree) -->
+  <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
 </head>
 
 <body>
   <div id="status">Status: loading…</div>
+  <canvas id="zappar-container"></canvas>
 
-  <!-- 🔥 SERVICE WORKER REGISTRATION FIX FOR GITHUB PAGES -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("zappar-service-worker.js", { scope: "./" })
-        .then(() => console.log("Zappar service worker registered"))
-        .catch((err) => console.warn("Service worker registration failed", err));
+<script>
+  const statusEl = document.getElementById("status");
+  const setStatus = (t) => statusEl.textContent = "Status: " + t;
+
+  // Register service worker
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./zappar-service-worker.js")
+      .then(() => console.log("Service worker registered"))
+      .catch(e => console.warn("SW registration failed", e));
+  }
+
+  // Setup Zappar
+  const renderer = new THREE.WebGLRenderer({
+    canvas: document.getElementById("zappar-container"),
+    antialias: true,
+    alpha: true
+  });
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  const camera = new ZapparThree.Camera();
+  const scene = new THREE.Scene();
+  scene.add(camera);
+
+  // Load your image target file
+  const imageTracker = new ZapparThree.ImageTrackerLoader().load("./assets/polygon.zpt");
+  const imageAnchor = new ZapparThree.ImageAnchorGroup(camera, imageTracker);
+  scene.add(imageAnchor);
+
+  // Debug: Add a test cube so we SEE tracking works
+  const geo = new THREE.BoxGeometry(0.2,0.2,0.2);
+  const mat = new THREE.MeshNormalMaterial();
+  const cube = new THREE.Mesh(geo, mat);
+  cube.visible = false;
+  imageAnchor.add(cube);
+
+  // Tracker events
+  imageTracker.onVisible.bind(() => {
+    setStatus("target found");
+    cube.visible = true;
+  });
+
+  imageTracker.onNotVisible.bind(() => {
+    setStatus("target lost");
+    cube.visible = false;
+  });
+
+  // Start the camera
+  ZapparThree.permissionRequestUI().then((granted) => {
+    if (granted) {
+      ZapparThree.permissionGrantedUI();
+      camera.start();
+      animate();
+    } else {
+      ZapparThree.permissionDeniedUI();
     }
-  </script>
+  });
 
-  <!-- MAIN AR SCRIPT -->
-  <script>
-    const statusEl = document.getElementById("status");
-    function setStatus(msg) {
-      console.log(msg);
-      statusEl.textContent = "Status: " + msg;
-    }
+  function animate(){
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  }
 
-    // ------------------------------
-    // THREE + ZAPPAR SETUP
-    ------------------------------
-    const scene = new THREE.Scene();
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // Required for Zappar
-    ZapparThree.glContextSet(renderer.getContext());
-
-    const camera = new ZapparThree.Camera();
-    scene.background = camera.backgroundTexture;
-
-    // Lighting
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-    hemi.position.set(0, 1, 0);
-    scene.add(hemi);
-
-    window.addEventListener("resize", () => {
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // ------------------------------
-    // CAMERA PERMISSION
-    // ------------------------------
-    setStatus("requesting camera permission…");
-    ZapparThree.permissionRequestUI().then((granted) => {
-      if (granted) {
-        camera.start();
-        setStatus("camera started — point at target image");
-      } else {
-        ZapparThree.permissionDeniedUI();
-        setStatus("camera permission denied");
-      }
-    });
-
-    // ------------------------------
-    // IMAGE TARGET
-    // ------------------------------
-    const imageTracker = new ZapparThree.ImageTrackerLoader().load("assets/polygon.zpt");
-    const imageAnchorGroup = new ZapparThree.ImageAnchorGroup(camera, imageTracker);
-    scene.add(imageAnchorGroup);
-
-    imageTracker.loadTarget("assets/polygon.zpt").then(() => {
-      console.log("polygon.zpt loaded successfully");
-    });
-
-    // ------------------------------
-    // DEBUG CUBE (to confirm tracking)
-    // ------------------------------
-    const cubeGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-    const cubeMat = new THREE.MeshNormalMaterial();
-    const debugCube = new THREE.Mesh(cubeGeo, cubeMat);
-    debugCube.visible = false;
-    debugCube.position.set(0, 0, 0.2);
-    imageAnchorGroup.add(debugCube);
-
-    // ------------------------------
-    // LOAD GLB FROM CLOUDFLARE
-    // ------------------------------
-    const loader = new THREE.GLTFLoader();
-    let model = null;
-
-    const GLB_URL = "https://frosty-union-c144.itskelpmusic.workers.dev/Lamesh.glb";
-
-    setStatus("loading GLB…");
-
-    loader.load(
-      GLB_URL,
-      (gltf) => {
-        model = gltf.scene;
-
-        // Scale your environment (adjust later)
-        model.scale.set(0.2, 0.2, 0.2);
-
-        // Center it
-        const box = new THREE.Box3().setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.sub(center);
-
-        model.visible = false;
-        imageAnchorGroup.add(model);
-
-        setStatus("model loaded — point at target image");
-      },
-      (xhr) => {
-        if (xhr.total) {
-          const pct = (xhr.loaded / xhr.total) * 100;
-          setStatus("downloading model: " + pct.toFixed(1) + "%");
-        }
-      },
-      (err) => {
-        console.error("GLB load error:", err);
-        setStatus("failed to load GLB");
-      }
-    );
-
-    // ------------------------------
-    // TRACKING CALLBACKS
-    // ------------------------------
-    imageTracker.onVisible.bind(() => {
-      setStatus("target found");
-      debugCube.visible = true;
-      if (model) model.visible = true;
-      imageAnchorGroup.visible = true;
-    });
-
-    imageTracker.onNotVisible.bind(() => {
-      setStatus("target lost — keep camera on image");
-      debugCube.visible = false;
-      if (model) model.visible = false;
-      imageAnchorGroup.visible = false;
-    });
-
-    // ------------------------------
-    // RENDER LOOP
-    ------------------------------
-    function animate() {
-      requestAnimationFrame(animate);
-      camera.updateFrame(renderer);
-
-      if (debugCube.visible) {
-        debugCube.rotation.y += 0.02;
-      }
-
-      renderer.render(scene, camera);
-    }
-    animate();
-  </script>
+  setStatus("ready — point at the target image");
+</script>
 
 </body>
 </html>
