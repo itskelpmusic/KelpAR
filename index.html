@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>KelpAR — Zappar WebAR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 
   <style>
     html, body {
@@ -14,6 +14,7 @@
       height: 100%;
       background: #000;
     }
+
     #zappar-container {
       width: 100%;
       height: 100%;
@@ -21,6 +22,7 @@
       top: 0;
       left: 0;
     }
+
     #status {
       position: absolute;
       top: 10px;
@@ -34,11 +36,11 @@
     }
   </style>
 
-  <!-- Zappar JS libraries (REQUIRED) -->
+  <!-- Zappar libraries -->
   <script src="https://libs.zappar.com/zappar/2.2.0/zappar.js"></script>
   <script src="https://libs.zappar.com/zappar-threejs/2.2.0/zappar-threejs.js"></script>
 
-  <!-- THREE.js (must load BEFORE using ZapparThree) -->
+  <!-- THREE.js -->
   <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
 </head>
 
@@ -48,16 +50,11 @@
 
 <script>
   const statusEl = document.getElementById("status");
-  const setStatus = (t) => statusEl.textContent = "Status: " + t;
+  const setStatus = (msg) => statusEl.textContent = "Status: " + msg;
 
-  // Register service worker
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./zappar-service-worker.js")
-      .then(() => console.log("Service worker registered"))
-      .catch(e => console.warn("SW registration failed", e));
-  }
+  setStatus("initializing…");
 
-  // Setup Zappar
+  // Three.js + Zappar setup
   const renderer = new THREE.WebGLRenderer({
     canvas: document.getElementById("zappar-container"),
     antialias: true,
@@ -71,30 +68,31 @@
   const scene = new THREE.Scene();
   scene.add(camera);
 
-  // Load your image target file
-  const imageTracker = new ZapparThree.ImageTrackerLoader().load("./assets/polygon.zpt");
-  const imageAnchor = new ZapparThree.ImageAnchorGroup(camera, imageTracker);
-  scene.add(imageAnchor);
+  // Load your image target
+  const imageTracker = new ZapparThree.ImageTrackerLoader()
+    .load("./assets/polygon.zpt");
 
-  // Debug: Add a test cube so we SEE tracking works
-  const geo = new THREE.BoxGeometry(0.2,0.2,0.2);
+  const anchorGroup = new ZapparThree.ImageAnchorGroup(camera, imageTracker);
+  scene.add(anchorGroup);
+
+  // Temporary cube to confirm tracking
+  const geo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const mat = new THREE.MeshNormalMaterial();
   const cube = new THREE.Mesh(geo, mat);
   cube.visible = false;
-  imageAnchor.add(cube);
+  anchorGroup.add(cube);
 
-  // Tracker events
   imageTracker.onVisible.bind(() => {
-    setStatus("target found");
     cube.visible = true;
+    setStatus("target found");
   });
 
   imageTracker.onNotVisible.bind(() => {
-    setStatus("target lost");
     cube.visible = false;
+    setStatus("target lost");
   });
 
-  // Start the camera
+  // Request camera permission
   ZapparThree.permissionRequestUI().then((granted) => {
     if (granted) {
       ZapparThree.permissionGrantedUI();
@@ -105,12 +103,12 @@
     }
   });
 
-  function animate(){
+  function animate() {
     renderer.render(scene, camera);
     requestAnimationFrame(animate);
   }
 
-  setStatus("ready — point at the target image");
+  setStatus("ready — point at target image");
 </script>
 
 </body>
