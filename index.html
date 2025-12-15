@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>KelpAR — Zappar WebAR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 
   <style>
     html, body {
@@ -14,6 +14,7 @@
       height: 100%;
       background: #000;
     }
+
     #status {
       position: absolute;
       top: 10px;
@@ -23,87 +24,109 @@
       background: rgba(0,0,0,0.4);
       z-index: 10;
       font-size: 16px;
-      font-family: sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
     canvas {
+      display: block;
       width: 100%;
       height: 100%;
-      display: block;
     }
   </style>
-
-  <!-- CORRECT Zappar libraries -->
-  <script src="https://libs.zappar.com/zappar/2.2.0/zappar.js"></script>
-  <script src="https://libs.zappar.com/zappar-threejs/2.2.0/zappar-threejs.js"></script>
-
-  <!-- THREE.js -->
-  <script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
-
 </head>
 
 <body>
   <div id="status">Status: loading…</div>
   <canvas id="canvas"></canvas>
 
-<script>
-  const statusEl = document.getElementById("status");
-  const setStatus = (msg) => statusEl.textContent = "Status: " + msg;
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.152.2/build/three.module.js";
+    import * as ZapparThree from "https://libs.zappar.com/zappar-threejs/2.2.0/module.js";
 
-  // Zappar camera + renderer setup
-  const renderer = new THREE.WebGLRenderer({
-    canvas: document.getElementById("canvas"),
-    alpha: true,
-    antialias: true
-  });
+    const statusEl = document.getElementById("status");
+    const setStatus = (msg) => {
+      console.log(msg);
+      statusEl.textContent = "Status: " + msg;
+    };
 
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
+    setStatus("initializing…");
 
-  const camera = new ZapparThree.Camera();
-  const scene = new THREE.Scene();
-  scene.add(camera);
+    // ---------- Renderer ----------
+    const canvas = document.getElementById("canvas");
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
 
-  // Load your image target
-  const tracker = new ZapparThree.ImageTrackerLoader().load("./assets/polygon.zpt");
-  const anchor = new ZapparThree.ImageAnchorGroup(camera, tracker);
-  scene.add(anchor);
+    // Let Zappar hook into this GL context
+    ZapparThree.glContextSet(renderer.getContext());
 
-  // Debug cube so we SEE tracking
-  const cube = new THREE.Mesh(
-    new THREE.BoxGeometry(0.2, 0.2, 0.2),
-    new THREE.MeshNormalMaterial()
-  );
-  cube.visible = false;
-  anchor.add(cube);
+    // ---------- Camera + Scene ----------
+    const camera = new ZapparThree.Camera();
+    const scene = new THREE.Scene();
+    scene.background = camera.backgroundTexture;
+    scene.add(camera);
 
-  tracker.onVisible.bind(() => {
-    cube.visible = true;
-    setStatus("target found");
-  });
+    window.addEventListener("resize", () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
 
-  tracker.onNotVisible.bind(() => {
+    // ---------- Image Tracker ----------
+    const tracker = new ZapparThree.ImageTrackerLoader().load("./assets/polygon.zpt");
+    const anchor = new ZapparThree.ImageAnchorGroup(camera, tracker);
+    scene.add(anchor);
+
+    // Debug cube to prove tracking works
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.2, 0.2),
+      new THREE.MeshNormalMaterial()
+    );
     cube.visible = false;
-    setStatus("target lost");
-  });
+    anchor.add(cube);
 
-  // Ask for camera permissions
-  ZapparThree.permissionRequestUI().then((granted) => {
-    if (granted) {
+    tracker.onVisible.bind(() => {
+      cube.visible = true;
+      setStatus("target found");
+    });
+
+    tracker.onNotVisible.bind(() => {
+      cube.visible = false;
+      setStatus("target lost");
+    });
+
+    // ---------- Start AR ----------
+    async function start() {
+      setStatus("requesting camera permission…");
+
+      const granted = await ZapparThree.permissionRequestUI();
+
+      if (!granted) {
+        ZapparThree.permissionDeniedUI();
+        setStatus("camera permission denied");
+        return;
+      }
+
       ZapparThree.permissionGrantedUI();
       camera.start();
+
+      setStatus("camera started — point at target");
+
+      function animate() {
+        camera.updateFrame(renderer);
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+
       animate();
-    } else {
-      ZapparThree.permissionDeniedUI();
     }
-  });
 
-  function animate() {
-    renderer.render(scene, camera);
-    requestAnimationFrame(animate);
-  }
-
-  setStatus("ready — point at target");
-</script>
-
+    start().catch((err) => {
+      console.error(err);
+      setStatus("error: " + err.message);
+    });
+  </script>
 </body>
 </html>
